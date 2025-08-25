@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { OrbitControls, Environment, PresentationControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { ANN_THERAPIST_QA } from '../../app/lib/ann-therapist-qa';
+import { findBestAnswer } from '../../app/lib/mariem-knowledge-base';
 
 /**
  * Enhanced 3D Avatar with Mariem Character System
@@ -147,9 +148,12 @@ function AvatarModel({ isTalking, isConnected, onContinuousTalkingChange }: {
         // Center the model
         gltf.scene.position.sub(center);
         
+        // Adjust Y position to show from mid-thigh to head
+        gltf.scene.position.y += size.y * 0.2; // Move up slightly to frame the body properly
+        
         // Scale to make avatar bigger and more prominent
         const maxDim = Math.max(size.x, size.y, size.z);
-        const scale = 10 / maxDim; // Bigger scale for more prominent avatar display
+        const scale = 12 / maxDim; // Adjusted scale for full body view
         gltf.scene.scale.setScalar(scale);
 
         // Set up animation mixer
@@ -339,6 +343,13 @@ function AvatarModel({ isTalking, isConnected, onContinuousTalkingChange }: {
 }
 
 // Main 3D Avatar Component
+interface ThreeDAvatarProps {
+  isTalking: boolean;
+  isConnected: boolean;
+  className?: string;
+  onCameraReset?: () => void; // Add callback for camera reset
+}
+
 // Error Boundary Component
 class ThreeDAvatarErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -379,8 +390,10 @@ class ThreeDAvatarErrorBoundary extends React.Component<
 export const ThreeDAvatar: React.FC<ThreeDAvatarProps> = ({ 
   isTalking, 
   isConnected, 
-  className = "" 
+  className = "",
+  onCameraReset
 }) => {
+  const orbitControlsRef = useRef<any>(null);
   const [testTalking, setTestTalking] = useState(false);
   const [continuousTalking, setContinuousTalking] = useState(false);
   const [forceContinuous, setForceContinuous] = useState(false);
@@ -395,95 +408,119 @@ export const ThreeDAvatar: React.FC<ThreeDAvatarProps> = ({
   const [conversationPhase, setConversationPhase] = useState<'greeting' | 'waiting' | 'sharing' | 'questioning' | 'relieved'>('greeting');
   const [hasBeenAsked, setHasBeenAsked] = useState(false);
 
-  // Mariem Character Interaction Methods
+  // Camera reset function
+  const resetCamera = () => {
+    if (orbitControlsRef.current) {
+      orbitControlsRef.current.reset();
+    }
+    if (onCameraReset) {
+      onCameraReset();
+    }
+  };
+
+  // Enhanced Mariem Character Interaction Methods - Real Patient Responses
   const mariemRespond = (input: string): string => {
     const lowerInput = input.toLowerCase();
     
-    // Personal questions - Mariem will answer naturally (CHECK THESE FIRST)
-    if (lowerInput.includes('name') || lowerInput.includes('call')) {
-      return `My name is Mariem. I'm 45 years old and I live in the UAE with my family.`;
+    // Debug: Log the incoming message
+    console.log('🔍 3D Avatar Processing message:', lowerInput);
+    
+    // Simple greetings - Mariem responds naturally as a patient
+    if (lowerInput.includes('hi') || lowerInput.includes('hello') || lowerInput.includes('hey')) {
+      setConversationPhase('greeting');
+      return `Hi doctor.`;
     }
     
-    if (lowerInput.includes('age') || lowerInput.includes('old')) {
-      return `I'm 45 years old, doctor.`;
-    }
+    // Use the knowledge base to find the best answer
+    console.log('🔍 3D Avatar Looking up answer in knowledge base...');
+    const response = findBestAnswer(input);
+    console.log('✅ 3D Avatar Found answer:', response.substring(0, 50) + '...');
     
-    if (lowerInput.includes('where') && lowerInput.includes('live')) {
-      return `I live in the United Arab Emirates with my family.`;
-    }
+    return response;
     
-    if (lowerInput.includes('family') || lowerInput.includes('children') || lowerInput.includes('husband')) {
-      return `I have a family here in the UAE. My mother has asthma, and there's a family history of allergies.`;
-    }
-    
-    if (lowerInput.includes('work') || lowerInput.includes('job') || lowerInput.includes('profession')) {
-      return `I work in an office, but this skin problem is making it difficult to focus sometimes because of the itching.`;
-    }
-    
-    // Use knowledge base for specific scenarios
-    if (lowerInput.includes('start') && (lowerInput.includes('consultation') || lowerInput.includes('begin'))) {
-      return ANN_THERAPIST_QA.initial_greeting.answer;
-    }
-    
-    if (lowerInput.includes('symptom') && (lowerInput.includes('detail') || lowerInput.includes('describe'))) {
-      return ANN_THERAPIST_QA.symptom_description.answer;
-    }
-    
-    if (lowerInput.includes('start') && (lowerInput.includes('month') || lowerInput.includes('ago'))) {
-      return ANN_THERAPIST_QA.symptom_progression.answer;
-    }
-    
-    if (lowerInput.includes('family') && (lowerInput.includes('asthma') || lowerInput.includes('allergy'))) {
-      return ANN_THERAPIST_QA.family_history.answer;
-    }
-    
-    if (lowerInput.includes('before') && (lowerInput.includes('similar') || lowerInput.includes('previous'))) {
-      return ANN_THERAPIST_QA.previous_experience.answer;
-    }
-    
-    if (lowerInput.includes('treatment') && (lowerInput.includes('concern') || lowerInput.includes('option'))) {
-      return ANN_THERAPIST_QA.treatment_concerns.answer;
-    }
-    
-    if (lowerInput.includes('long term') || lowerInput.includes('permanent') || lowerInput.includes('forever')) {
-      return ANN_THERAPIST_QA.long_term_outlook.answer;
-    }
-    
-    if (lowerInput.includes('relief') || lowerInput.includes('better') || lowerInput.includes('hope')) {
-      return ANN_THERAPIST_QA.relief_expression.answer;
-    }
-    
-    if (lowerInput.includes('try') && (lowerInput.includes('so far') || lowerInput.includes('attempt'))) {
+    if (lowerInput.includes('tried so far to treat your symptoms') || lowerInput.includes('what have you tried') || 
+        lowerInput.includes('tried so far') || lowerInput.includes('treatment attempts')) {
       return ANN_THERAPIST_QA.treatment_attempts.answer;
     }
     
-    if (lowerInput.includes('affect') && (lowerInput.includes('daily') || lowerInput.includes('life'))) {
+    if (lowerInput.includes('affect your daily life') || lowerInput.includes('affect daily life') || 
+        lowerInput.includes('daily life') || lowerInput.includes('impact on life')) {
       return ANN_THERAPIST_QA.impact_on_life.answer;
     }
     
-    if (lowerInput.includes('emotional') || lowerInput.includes('feel') && lowerInput.includes('emotion')) {
+    if (lowerInput.includes('affected you emotionally') || lowerInput.includes('emotional impact') || 
+        lowerInput.includes('emotionally') || lowerInput.includes('emotional effect')) {
       return ANN_THERAPIST_QA.emotional_impact.answer;
     }
     
-    if (lowerInput.includes('sleep') && (lowerInput.includes('night') || lowerInput.includes('wake'))) {
+    if (lowerInput.includes('affect your sleep') || lowerInput.includes('sleep issues') || 
+        lowerInput.includes('sleep') || lowerInput.includes('night')) {
       return ANN_THERAPIST_QA.sleep_issues.answer;
     }
     
-    if (lowerInput.includes('clothing') || lowerInput.includes('clothes') || lowerInput.includes('wear')) {
+    if (lowerInput.includes('affect your clothing choices') || lowerInput.includes('clothing choices') || 
+        lowerInput.includes('clothing concerns') || lowerInput.includes('clothes')) {
       return ANN_THERAPIST_QA.clothing_concerns.answer;
     }
     
-    if (lowerInput.includes('hope') && (lowerInput.includes('visit') || lowerInput.includes('get'))) {
+    if (lowerInput.includes('hoping to get from this visit') || lowerInput.includes('hoping from this visit') || 
+        lowerInput.includes('hope for relief') || lowerInput.includes('what are you hoping')) {
       return ANN_THERAPIST_QA.hope_for_relief.answer;
     }
     
-    // Main problem questions
-    if (lowerInput.includes('what') && (lowerInput.includes('problem') || lowerInput.includes('issue') || lowerInput.includes('wrong') || lowerInput.includes('bother'))) {
+    if (lowerInput.includes('describe your skin symptoms') || lowerInput.includes('skin symptoms in detail') || 
+        lowerInput.includes('symptoms in detail') || lowerInput.includes('describe symptoms')) {
+      return ANN_THERAPIST_QA.symptom_description.answer;
+    }
+    
+    // Treatment attempts - very specific
+    if (lowerInput.includes('what have you tried') || lowerInput.includes('tried so far') || 
+        lowerInput.includes('treatment attempts') || lowerInput.includes('what did you try')) {
+      console.log('✅ 3D Avatar Matched: Treatment attempts');
+      return ANN_THERAPIST_QA.treatment_attempts.answer;
+    }
+
+    // Impact on life - very specific
+    if (lowerInput.includes('affect your daily life') || lowerInput.includes('affect daily life') || 
+        lowerInput.includes('impact on life') || lowerInput.includes('how does this affect')) {
+      console.log('✅ 3D Avatar Matched: Impact on life');
+      return ANN_THERAPIST_QA.impact_on_life.answer;
+    }
+
+    // Sleep issues - very specific
+    if (lowerInput.includes('affect your sleep') || lowerInput.includes('sleep issues') || 
+        lowerInput.includes('sleep') || lowerInput.includes('night')) {
+      console.log('✅ 3D Avatar Matched: Sleep issues');
+      return ANN_THERAPIST_QA.sleep_issues.answer;
+    }
+
+    // Clothing concerns - very specific
+    if (lowerInput.includes('clothing choices') || lowerInput.includes('clothing concerns') || 
+        lowerInput.includes('clothes') || lowerInput.includes('what you wear')) {
+      console.log('✅ 3D Avatar Matched: Clothing concerns');
+      return ANN_THERAPIST_QA.clothing_concerns.answer;
+    }
+
+    // Hope for relief - very specific
+    if (lowerInput.includes('hoping from this visit') || lowerInput.includes('hope for relief') || 
+        lowerInput.includes('what are you hoping') || lowerInput.includes('what do you hope')) {
+      console.log('✅ 3D Avatar Matched: Hope for relief');
+      return ANN_THERAPIST_QA.hope_for_relief.answer;
+    }
+
+    // NOW check the general problem question LAST
+    if ((lowerInput.includes('what') && lowerInput.includes('problem')) || 
+        (lowerInput.includes('what') && lowerInput.includes('issue')) || 
+        (lowerInput.includes('what') && lowerInput.includes('wrong')) || 
+        (lowerInput.includes('what') && lowerInput.includes('bother')) ||
+        lowerInput.includes('what brings you') ||
+        lowerInput.includes('what is your problem')) {
+      console.log('✅ 3D Avatar Matched: Main problem question');
       setHasBeenAsked(true);
       setConversationPhase('sharing');
       setMariemState(prev => ({ ...prev, emotionalState: 'worried' }));
       
-      return `Oh doctor, I'm really worried about my skin. I have this dry, itchy, red skin on my arms and neck that's been getting worse for months. The itching gets really bad, especially at night, and I can't sleep properly. I've tried moisturizing but it doesn't help much. I'm so frustrated and embarrassed by this.`;
+      return ANN_THERAPIST_QA.initial_greeting.answer;
     }
     
     if (lowerInput.includes('tell') && (lowerInput.includes('more') || lowerInput.includes('about'))) {
@@ -554,6 +591,32 @@ export const ThreeDAvatar: React.FC<ThreeDAvatarProps> = ({
     if (lowerInput.includes('clothes') || lowerInput.includes('wear') || lowerInput.includes('embarrass')) {
       return `Yes, I'm embarrassed about how it looks, so I avoid wearing short sleeves or anything that shows my arms. I have to be careful about what fabrics I wear because some make the itching worse. It's affecting my confidence and how I dress.`;
     }
+    
+    // Treatment and medication questions
+    if (lowerInput.includes('treatment') || lowerInput.includes('medicine') || lowerInput.includes('cream') || lowerInput.includes('ointment')) {
+      return `I've tried different moisturizers and over-the-counter creams, but nothing seems to help much. I'm worried about using strong medications, but I'm also desperate for relief. What do you think would work best for me?`;
+    }
+    
+    if (lowerInput.includes('steroid') || lowerInput.includes('corticosteroid')) {
+      return `I've heard about corticosteroids, but I'm concerned about using them too much. Are they safe for long-term use? I'm worried about side effects, but I'm also desperate for some relief from this itching.`;
+    }
+    
+    // Follow-up and prognosis questions
+    if (lowerInput.includes('better') || lowerInput.includes('improve') || lowerInput.includes('cure')) {
+      return `I really hope this can get better. How long do you think it will take to see improvement? I'm willing to try whatever you recommend. I just want to be able to sleep properly and not feel embarrassed about my skin.`;
+    }
+    
+    if (lowerInput.includes('chronic') || lowerInput.includes('permanent') || lowerInput.includes('forever')) {
+      return `Oh no, you don't think this is permanent, do you? I really hope this isn't something I'll have to deal with forever. Is there anything I can do to prevent it from getting worse?`;
+    }
+    
+    // General medical questions
+    if (lowerInput.includes('diagnosis') || lowerInput.includes('what is it') || lowerInput.includes('condition')) {
+      return `I'm really curious about what this could be. Is it eczema? Or something else? I want to understand what's happening to my skin so I can take better care of it.`;
+    }
+    
+    // Default response for unrecognized questions
+    return `I'm not sure I understand that question, doctor. Could you explain it differently? I want to make sure I give you the right information to help me.`;
     
     // Treatment and help questions
     if (lowerInput.includes('try') || lowerInput.includes('cream') || lowerInput.includes('medicine') || lowerInput.includes('treatment')) {
@@ -637,12 +700,24 @@ export const ThreeDAvatar: React.FC<ThreeDAvatarProps> = ({
     }
   };
 
-  // Handle doctor input and get Mariem's response
+  // Enhanced doctor input handler with realistic patient responses
   const handleDoctorInput = () => {
-    if (doctorInput.trim()) {
-      const response = mariemRespond(doctorInput);
-      setMariemResponse(response);
-      setDoctorInput('');
+    if (!doctorInput.trim()) return;
+    
+    const response = mariemRespond(doctorInput);
+    setMariemResponse(response);
+    setDoctorInput('');
+    
+    // Trigger talking animation with realistic timing
+    setTestTalking(true);
+    const talkingDuration = Math.max(response.length * 80, 2000); // Minimum 2 seconds
+    setTimeout(() => setTestTalking(false), talkingDuration);
+    
+    // Update emotional state based on response content
+    if (response.includes('worried') || response.includes('frustrated') || response.includes('embarrassed')) {
+      setMariemState(prev => ({ ...prev, emotionalState: 'worried' }));
+    } else if (response.includes('hope') || response.includes('better') || response.includes('relief')) {
+      setMariemState(prev => ({ ...prev, emotionalState: 'hopeful' }));
     }
   };
 
@@ -650,7 +725,7 @@ export const ThreeDAvatar: React.FC<ThreeDAvatarProps> = ({
     <div className={`w-full h-full bg-gradient-to-br from-gray-900 to-black rounded-lg overflow-hidden ${className}`}>
       <ThreeDAvatarErrorBoundary>
         <Canvas
-          camera={{ position: [0, 0, 6], fov: 70 }} // Closer camera and wider FOV for bigger avatar
+          camera={{ position: [0, 1, 8], fov: 50 }} // Positioned to show full body from mid-thigh to head
           style={{ background: 'transparent' }}
         >
         {/* Lighting */}
@@ -684,24 +759,25 @@ export const ThreeDAvatar: React.FC<ThreeDAvatarProps> = ({
           </group>
         </Suspense>
         
-        {/* Controls - Centered, No Panning */}
+        {/* Controls - Optimized for full body view */}
         <PresentationControls
           global
           rotation={[0, 0, 0]}
-          polar={[-Math.PI / 6, Math.PI / 6]}
-          azimuth={[-Math.PI / 6, Math.PI / 6]}
+          polar={[-Math.PI / 4, Math.PI / 4]} // Limited vertical range for better framing
+          azimuth={[-Math.PI / 3, Math.PI / 3]} // Limited horizontal range for centered view
           snap
           speed={0.5}
         >
           <OrbitControls 
+            ref={orbitControlsRef}
             enableZoom={true}
             enablePan={true}
             enableRotate={true}
-            minDistance={0.1}
-            maxDistance={100}
+            minDistance={0.1} // Allow very close zoom
+            maxDistance={100} // Allow very far zoom
             autoRotate={false}
             autoRotateSpeed={0.5}
-            target={[0, 0, 0]}
+            target={[0, 0.5, 0]} // Target slightly above center for better framing
           />
         </PresentationControls>
               </Canvas>

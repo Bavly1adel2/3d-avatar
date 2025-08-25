@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ThreeDAvatar } from './ThreeDAvatar';
 import { Input } from '../Input';
 import { Button } from '../Button';
@@ -27,6 +27,7 @@ export const ThreeDAvatarCard: React.FC<ThreeDAvatarCardProps> = ({
   onSendMessage,
   showTextChat = true
 }) => {
+  const [cameraResetKey, setCameraResetKey] = useState(0);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -322,9 +323,13 @@ export const ThreeDAvatarCard: React.FC<ThreeDAvatarCardProps> = ({
            </div>
          )}
         <ThreeDAvatar
+          key={cameraResetKey}
           isTalking={isTalking}
           isConnected={isConnected}
           className="w-full h-full"
+          onCameraReset={() => {
+            console.log('Camera reset requested');
+          }}
         />
         
         {/* Overlay Controls */}
@@ -334,7 +339,8 @@ export const ThreeDAvatarCard: React.FC<ThreeDAvatarCardProps> = ({
               className="p-2 bg-black/70 text-white rounded-lg hover:bg-black/90 transition-all"
               title="Reset Camera"
               onClick={() => {
-                // This would reset the camera in the 3D scene
+                // Reset camera by remounting the component
+                setCameraResetKey(prev => prev + 1);
                 console.log('Reset camera');
               }}
             >
