@@ -18,6 +18,8 @@ interface ConversationAIResponse {
   animationType?: 'wave' | 'nod' | 'think' | 'concerned';
 }
 
+const MAX_MEMORY_SIZE = 50; // Limit memory arrays to prevent memory leaks
+
 export const useConversationAI = () => {
   const [memory, setMemory] = useState<ConversationMemory>({
     userMessages: [],
@@ -38,6 +40,30 @@ export const useConversationAI = () => {
     emotionalState: 'worried about skin condition affecting daily life and sleep'
   };
 
+  // Helper function to limit array size
+  const limitArraySize = (arr: string[], maxSize: number) => {
+    return arr.length > maxSize ? arr.slice(-maxSize) : arr;
+  };
+
+  // Helper function to determine mood from response content
+  const determineMood = (response: string): ConversationMemory['mood'] => {
+    const lowerResponse = response.toLowerCase();
+    
+    if (lowerResponse.includes('hope') || lowerResponse.includes('relief') || lowerResponse.includes('better')) {
+      return 'hopeful';
+    } else if (lowerResponse.includes('frustrated') || lowerResponse.includes('embarrassed') || lowerResponse.includes('angry')) {
+      return 'frustrated';
+    } else if (lowerResponse.includes('worried') || lowerResponse.includes('concerned') || lowerResponse.includes('scared')) {
+      return 'worried';
+    } else if (lowerResponse.includes('relieved') || lowerResponse.includes('thankful')) {
+      return 'relieved';
+    } else if (lowerResponse.includes('anxious') || lowerResponse.includes('nervous')) {
+      return 'anxious';
+    }
+    
+    return 'concerned'; // default mood
+  };
+
   // Generate contextual responses based on doctor's questions
   const generateResponse = useCallback((userMessage: string): ConversationAIResponse => {
     const message = userMessage.toLowerCase().trim();
@@ -46,58 +72,57 @@ export const useConversationAI = () => {
     // Debug: Log the incoming message
     console.log('🔍 Processing message:', message);
     
-    // Update memory
-    setMemory(prev => ({
-      ...prev,
-      userMessages: [...prev.userMessages, userMessage],
-      lastInteraction: now
-    }));
+    let response: string;
+    let mood: ConversationMemory['mood'] = 'concerned';
+    let animationType: ConversationAIResponse['animationType'] = 'think';
+    let topic = 'general';
 
     // Simple greetings - Mariem just says hi and waits for doctor to ask questions
     if (message.includes('hi') || message.includes('hello') || message.includes('hey')) {
-      const response = "Hi doctor.";
+      response = "Hi doctor.";
+      mood = 'anxious';
+      animationType = 'concerned';
+      topic = 'greeting';
+    } else {
+      // Use the knowledge base to find the best answer
+      try {
+        console.log('🔍 Looking up answer in knowledge base...');
+        response = findBestAnswer(userMessage);
+        console.log('✅ Found answer:', response.substring(0, 50) + '...');
+        
+        mood = determineMood(response);
+        topic = 'knowledge_base_response';
+      } catch (error) {
+        console.error('❌ Error finding answer:', error);
+        response = "I'm sorry, I didn't understand that. Could you please repeat your question?";
+        mood = 'worried';
+        animationType = 'concerned';
+        topic = 'error';
+      }
+    }
+
+    // Update memory in a single operation to prevent race conditions
+    setMemory(prev => {
+      const newUserMessages = limitArraySize([...prev.userMessages, userMessage], MAX_MEMORY_SIZE);
+      const newAvatarResponses = limitArraySize([...prev.avatarResponses, response], MAX_MEMORY_SIZE);
+      const newTopics = limitArraySize([...prev.topics, topic], MAX_MEMORY_SIZE);
       
-      setMemory(prev => ({
-        ...prev,
-        avatarResponses: [...prev.avatarResponses, response],
-        topics: [...prev.topics, 'greeting'],
-        hasSharedSymptoms: false
-      }));
-
       return {
-        response,
-        mood: 'anxious',
-        shouldAnimate: true,
-        animationType: 'concerned'
+        ...prev,
+        userMessages: newUserMessages,
+        avatarResponses: newAvatarResponses,
+        topics: newTopics,
+        mood,
+        lastInteraction: now,
+        hasSharedSymptoms: prev.hasSharedSymptoms || message.includes('symptom') || message.includes('condition')
       };
-    }
-
-    // Use the knowledge base to find the best answer
-    console.log('🔍 Looking up answer in knowledge base...');
-    const response = findBestAnswer(userMessage);
-    console.log('✅ Found answer:', response.substring(0, 50) + '...');
-    
-    // Determine mood based on response content
-    let mood = 'worried';
-    if (response.includes('hope') || response.includes('relief')) {
-      mood = 'hopeful';
-    } else if (response.includes('frustrated') || response.includes('embarrassed')) {
-      mood = 'frustrated';
-    } else if (response.includes('worried') || response.includes('concerned')) {
-      mood = 'worried';
-    }
-    
-    setMemory(prev => ({
-      ...prev,
-      avatarResponses: [...prev.avatarResponses, response],
-      topics: [...prev.topics, 'knowledge_base_response']
-    }));
+    });
 
     return {
       response,
       mood,
       shouldAnimate: true,
-      animationType: 'think'
+      animationType
     };
   }, []);
 
